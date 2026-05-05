@@ -1,0 +1,43 @@
+{
+  "name": "prompt-clarifier-mcp",
+  "version": "2.0.0",
+  "description": "MCP agent that clarifies user prompts before sending them to any LLM — works in Cursor, VS Code, IntelliJ, PyCharm, Claude Desktop",
+  "main": "dist/index.js",
+  "bin": {
+    "prompt-clarifier-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "prompt",
+    "clarifier",
+    "agent",
+    "llm",
+    "cursor",
+    "vscode",
+    "intellij",
+    "jetbrains"
+  ],
+  "author": "DMI Agentix",
+  "license": "MIT",
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist/",
+    "README.md"
+  ]
+}
