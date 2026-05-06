@@ -137,7 +137,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write("Prompt Clarifier MCP server v2.0 started (stdio)\n");
+  process.stderr.write("Prompt Clarifier MCP server v3.0.1 started (stdio)\n");
 }
 
 main().catch((err) => {
