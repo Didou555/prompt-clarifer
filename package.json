@@ -23,7 +23,7 @@
     "intellij",
     "jetbrains"
   ],
-  "author": "DMI Agentix",
+  "author": "",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0"
