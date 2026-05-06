@@ -20,7 +20,7 @@ import {
 } from "./clarifier.js";
 
 const server = new Server(
-  { name: "prompt-clarifier", version: "2.0.0" },
+  { name: "prompt-clarifier", version: "3.0.0" },
   { capabilities: { tools: {} } }
 );
 
