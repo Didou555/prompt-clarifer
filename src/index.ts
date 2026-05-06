@@ -12,7 +12,12 @@ import {
   saveSession,
   deleteSession,
 } from "./session.js";
-import { isGoSignal, getNextQuestion, buildEnrichedPrompt } from "./clarifier.js";
+import {
+  isGoSignal,
+  buildClarifySystemPrompt,
+  buildEnrichedPrompt,
+  detectDomain,
+} from "./clarifier.js";
 
 const server = new Server(
   { name: "prompt-clarifier", version: "2.0.0" },
@@ -24,21 +29,21 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
     {
       name: "clarify",
       description:
-        "Affine un prompt utilisateur en posant des questions ciblées une par une, puis génère un prompt enrichi prêt à être exécuté par le LLM.",
+        "Returns a system prompt and user message that instruct the IDE's own LLM to ask targeted clarifying questions one at a time, then produces an enriched prompt once enough context is gathered. The MCP server manages session state only — no LLM calls are made server-side.",
       inputSchema: {
         type: "object",
         properties: {
           prompt: {
             type: "string",
-            description: "Le prompt initial de l'utilisateur (requis au premier appel).",
+            description: "The initial user prompt (required on first call).",
           },
           session_id: {
             type: "string",
-            description: "ID de session retourné par un appel précédent (pour continuer la conversation).",
+            description: "Session ID returned by a previous call (to continue the conversation).",
           },
           answer: {
             type: "string",
-            description: "Réponse de l'utilisateur à la dernière question posée par l'agent.",
+            description: "The user's answer to the last clarifying question.",
           },
         },
         required: [],
@@ -49,7 +54,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (request.params.name !== "clarify") {
-    return { content: [{ type: "text", text: `Outil inconnu : ${request.params.name}` }] };
+    return { content: [{ type: "text", text: `Unknown tool: ${request.params.name}` }] };
   }
 
   const args = request.params.arguments as {
@@ -62,27 +67,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   if (!args.session_id) {
     if (!args.prompt) {
       return {
-        content: [{ type: "text", text: "Erreur : `prompt` est requis pour démarrer une session." }],
+        content: [{ type: "text", text: "Error: `prompt` is required to start a session." }],
       };
     }
     const session = createSession(args.prompt);
-    const firstQuestion = await getNextQuestion(session.initialPrompt, []);
-    if (!firstQuestion) {
-      deleteSession(session.id);
-      return {
-        content: [{ type: "text", text: buildEnrichedPrompt(session.initialPrompt, []) }],
-      };
-    }
-    saveSession(session);
+    const domain = detectDomain(args.prompt);
     return {
       content: [
         {
           type: "text",
           text: JSON.stringify({
             session_id: session.id,
-            question: firstQuestion,
+            system_prompt: buildClarifySystemPrompt(args.prompt, [], domain),
+            user_message: `Here is the user prompt to clarify: ${args.prompt}`,
             instructions:
-              "Réponds à cette question, puis rappelle l'outil clarify avec session_id et answer. Dis 'go' pour générer immédiatement le prompt final.",
+              "Ask the first clarifying question now. Include the session_id in your response so the user knows to pass it back.",
           }),
         },
       ],
@@ -93,45 +92,42 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const session = loadSession(args.session_id);
   if (!session) {
     return {
-      content: [{ type: "text", text: `Session introuvable : ${args.session_id}` }],
+      content: [{ type: "text", text: `Session not found: ${args.session_id}` }],
     };
   }
 
   const answer = args.answer ?? "";
 
-  // User said "go" → generate final prompt now
-  if (isGoSignal(answer)) {
+  // Save the answer to session
+  if (answer.trim()) {
+    session.qaHistory.push({ question: "", answer });
+    saveSession(session);
+  }
+
+  // Go signal or max questions reached → return final enriched prompt
+  if (isGoSignal(answer) || session.qaHistory.length >= 5) {
     const enriched = buildEnrichedPrompt(session.initialPrompt, session.qaHistory);
     deleteSession(session.id);
-    return { content: [{ type: "text", text: enriched }] };
+    return {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ final_prompt: enriched }),
+        },
+      ],
+    };
   }
 
-  // Record the answer to the last question asked
-  if (session.lastQuestion && answer.trim()) {
-    session.qaHistory.push({ question: session.lastQuestion, answer });
-  }
-
-  // Ask Claude for the next question
-  const nextQuestion = await getNextQuestion(session.initialPrompt, session.qaHistory);
-  if (!nextQuestion) {
-    const enriched = buildEnrichedPrompt(session.initialPrompt, session.qaHistory);
-    deleteSession(session.id);
-    return { content: [{ type: "text", text: enriched }] };
-  }
-
-  session.lastQuestion = nextQuestion;
-  saveSession(session);
-
+  const domain = detectDomain(session.initialPrompt);
   return {
     content: [
       {
         type: "text",
         text: JSON.stringify({
           session_id: session.id,
-          question: nextQuestion,
-          qa_so_far: session.qaHistory.length,
-          instructions:
-            "Réponds à cette question, puis rappelle l'outil clarify avec session_id et answer. Dis 'go' pour générer immédiatement le prompt final.",
+          system_prompt: buildClarifySystemPrompt(session.initialPrompt, session.qaHistory, domain),
+          user_message: `The user answered: ${answer}. Ask the next question.`,
+          qa_count: session.qaHistory.length,
         }),
       },
     ],
@@ -139,10 +135,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 });
 
 async function main() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    process.stderr.write("Erreur : ANTHROPIC_API_KEY non définie.\n");
-    process.exit(1);
-  }
   const transport = new StdioServerTransport();
   await server.connect(transport);
   process.stderr.write("Prompt Clarifier MCP server v2.0 started (stdio)\n");

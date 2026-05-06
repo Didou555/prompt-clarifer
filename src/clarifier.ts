@@ -1,4 +1,3 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { QA } from "./session.js";
 
 const GO_KEYWORDS = [
@@ -16,52 +15,72 @@ export function isGoSignal(text: string): boolean {
   );
 }
 
-const client = new Anthropic();
+export type Domain = "ml_onnx" | "ml_h2o" | "data_table" | "ml_general" | "general";
 
-const SYSTEM_PROMPT = `Tu es un agent expert en amélioration de prompts. Ton rôle est d'analyser un prompt utilisateur et l'historique des questions/réponses déjà échangées, puis de décider de la prochaine action.
+export function detectDomain(prompt: string): Domain {
+  if (/onnx/i.test(prompt)) return "ml_onnx";
+  if (/h2o|automl|gbm|mojo|pojo/i.test(prompt)) return "ml_h2o";
+  if (/data.?table|schema|dataframe|column/i.test(prompt)) return "data_table";
+  if (/machine.?learn|deep.?learn|neural|pytorch|tensorflow|sklearn|model|train|predict|classif|regress/i.test(prompt)) return "ml_general";
+  return "general";
+}
 
-Règles strictes :
-1. Si des précisions importantes manquent encore pour bien exécuter la demande, pose UNE SEULE question — la plus pertinente selon le domaine et le contexte réel du prompt.
-2. Si tu as suffisamment d'informations pour que le LLM puisse répondre précisément (ou après 5 questions maximum), réponds uniquement avec le mot : DONE
-3. La question doit être concrète et adaptée au domaine détecté automatiquement (code, data science, design, rédaction, business, DevOps, etc.)
-4. Ne pose jamais une question générique si le contexte est déjà clair. Chaque question doit débloquer une information réellement utile.
-5. Réponds UNIQUEMENT avec la question ou le mot DONE — aucune explication, aucun préambule, aucune ponctuation superflue.`;
+const KB_PREAMBLE = `Before asking your first question, search your connected knowledge bases (Confluence, Notion, or any connected documentation tool) for pages related to the user's request and to your company's internal standards, processes, and best practices relevant to this topic. Use that context to ask questions that are specific to your organization's actual workflow and constraints, rather than generic questions. If no relevant internal documentation is found, fall back to domain best practices.
 
-export async function getNextQuestion(
+Examples of what to search for depending on the detected domain:
+- ONNX model → model validation process, opset standards, deployment pipeline
+- H2O model → AutoML configuration, MOJO export standards, validation criteria
+- Data table → schema conventions, naming standards, data governance rules
+- General coding → architecture guidelines, code review standards, tech stack
+- General request → any internal process or standard related to the topic`;
+
+const DOMAIN_ANGLES: Record<Domain, string> = {
+  ml_onnx:     "Focus on: runtime, opset version, input/output tensor shapes, operators needed.",
+  ml_h2o:      "Focus on: algorithm type (GBM/DRF/AutoML), target variable, feature types, export format (MOJO/POJO), training constraints.",
+  data_table:  "Focus on: schema/columns, data types, volume, relationships, use case (reporting/ML/API).",
+  ml_general:  "Focus on: framework, task type, data format, performance constraints.",
+  general:     "Focus on: objective, language/environment, existing context, edge cases.",
+};
+
+export function buildClarifySystemPrompt(
   initialPrompt: string,
-  qaHistory: QA[]
-): Promise<string | null> {
-  if (qaHistory.length >= 5) return null;
-
+  qaHistory: QA[],
+  domain: Domain
+): string {
   const historyText =
     qaHistory.length > 0
       ? qaHistory
-          .map((qa, i) => `Q${i + 1}: ${qa.question}\nR${i + 1}: ${qa.answer}`)
+          .map((qa, i) =>
+            qa.question
+              ? `Q${i + 1}: ${qa.question}\nA${i + 1}: ${qa.answer}`
+              : `A${i + 1}: ${qa.answer}`
+          )
           .join("\n\n")
-      : "Aucune question posée pour l'instant.";
+      : "No questions asked yet.";
 
-  const userMessage = `Prompt initial de l'utilisateur :
-"${initialPrompt}"
+  const shouldStop =
+    qaHistory.length >= 5 ||
+    (qaHistory.length > 0 && isGoSignal(qaHistory[qaHistory.length - 1].answer));
 
-Historique des questions/réponses :
+  return `${KB_PREAMBLE}
+
+---
+
+You are a prompt clarification assistant. Your task is to iteratively refine a user's prompt by asking targeted questions.
+
+Initial prompt: "${initialPrompt}"
+
+Q&A history so far:
 ${historyText}
 
-Quelle est la prochaine question à poser, ou dois-tu répondre DONE ?`;
+Detected domain: ${domain}
+${DOMAIN_ANGLES[domain]}
 
-  const response = await client.messages.create({
-    model: "claude-haiku-4-5-20251001",
-    max_tokens: 200,
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: userMessage }],
-  });
-
-  const text =
-    response.content[0].type === "text"
-      ? response.content[0].text.trim()
-      : "";
-
-  if (text.toUpperCase() === "DONE" || text === "") return null;
-  return text;
+${
+  shouldStop
+    ? "You have enough information. Return ONLY the final enriched prompt, incorporating all answers collected so far. Do not ask any more questions."
+    : "Ask the single most relevant next clarifying question for this domain and context. Output ONLY the question — no preamble, no explanation, no punctuation beyond the question mark."
+}`;
 }
 
 export function buildEnrichedPrompt(initialPrompt: string, qaHistory: QA[]): string {
