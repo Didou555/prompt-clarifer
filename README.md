@@ -60,6 +60,27 @@ The returned system prompt instructs your IDE's LLM to **search connected knowle
 
 > **No API key required.** The server makes no external LLM calls.
 
+### Option 1 — Global install (recommended)
+
+```bash
+npm install -g prompt-clarifier-mcp
+```
+
+Then use `prompt-clarifier-mcp` as the command in your IDE config instead of `npx`:
+
+```json
+{
+  "command": "prompt-clarifier-mcp",
+  "args": []
+}
+```
+
+### Option 2 — On-demand via npx
+
+No install needed. Use `npx -y prompt-clarifier-mcp` directly in your IDE config (see examples below). The package is fetched automatically on first run.
+
+---
+
 ### Cursor
 
 Open `~/.cursor/mcp.json` (create it if it does not exist):
