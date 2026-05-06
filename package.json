@@ -1,6 +1,6 @@
 {
   "name": "prompt-clarifier-mcp",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "MCP agent that clarifies user prompts before sending them to any LLM — works in Cursor, VS Code, IntelliJ, PyCharm, Claude Desktop",
   "main": "dist/index.js",
   "bin": {
