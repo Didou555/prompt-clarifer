@@ -1,5 +1,7 @@
 # Prompt Clarifier — MCP Agent
 
+![version](https://img.shields.io/badge/version-3.0.4-blue)
+
 > Stop the back-and-forth with your LLM. This agent asks the right questions before executing your request.
 
 ## How it works
@@ -29,7 +31,7 @@ The MCP server is **LLM-agnostic**: it makes no external API calls and requires 
 | Domain detection | MCP server |
 | Session state (Q&A history) | MCP server |
 | Question generation | Your IDE's LLM (Junie, Cursor, Claude Code, Copilot…) |
-| Knowledge base search | Your IDE's LLM (Confluence, Notion, etc.) |
+| Knowledge base search | Your IDE's LLM (Confluence, Jira, Figma, Notion, Linear, GitHub Issues…) |
 
 **Call flow:**
 
@@ -52,7 +54,20 @@ The MCP server is **LLM-agnostic**: it makes no external API calls and requires 
 
 ## Knowledge base search
 
-The returned system prompt instructs your IDE's LLM to **search connected knowledge bases first** (Confluence, Notion, or any connected documentation tool) before formulating questions. This produces questions tailored to your organization's actual standards and workflows rather than generic ones.
+The returned system prompt instructs your IDE's LLM to **use its connected MCP tools** to gather internal context before formulating questions. This produces questions tailored to your organization's actual standards and workflows rather than generic ones.
+
+Supported platforms (if connected in your IDE):
+
+| Platform | MCP tool used | What is searched |
+| --- | --- | --- |
+| **Confluence** (Atlassian Rovo) | `searchConfluenceUsingCql` | Internal standards, architecture decisions, naming conventions |
+| **Jira** (Atlassian Rovo) | `searchJiraIssuesUsingJql` | Open issues, epics, current constraints |
+| **Figma** | Figma MCP tool | Design specs, component names |
+| **Notion** | Notion MCP tool | Internal documentation |
+| **Linear** | Linear MCP tool | Open issues, roadmap |
+| **GitHub Issues** | GitHub MCP tool | Open issues, discussions |
+
+If none of these tools are connected, the LLM falls back to domain best practices.
 
 ---
 
@@ -201,6 +216,8 @@ The server will:
   "qa_count": 2
 }
 ```
+
+> Pass back the `question` field (the question your LLM just asked) alongside `answer` so the session history stays complete and the enriched prompt includes the full Q&A context.
 
 **Final response:**
 ```json
