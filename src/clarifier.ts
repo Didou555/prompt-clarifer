@@ -25,7 +25,14 @@ export function detectDomain(prompt: string): Domain {
   return "general";
 }
 
-const KB_PREAMBLE = `Before asking your first question, search your connected knowledge bases (Confluence, Notion, or any connected documentation tool) for pages related to the user's request and to your company's internal standards, processes, and best practices relevant to this topic. Use that context to ask questions that are specific to your organization's actual workflow and constraints, rather than generic questions. If no relevant internal documentation is found, fall back to domain best practices.
+const KB_PREAMBLE = `Before asking your first question, use every connected MCP tool available to gather internal context:
+
+1. If a Confluence or Atlassian MCP tool is available (e.g. mcp__Atlassian_Rovo__search, searchConfluenceUsingCql), search for pages related to the user's request — look for internal standards, architecture decisions, naming conventions, or processes relevant to the topic.
+2. If a Jira MCP tool is available (e.g. searchJiraIssuesUsingJql), search for open issues or epics related to the topic to understand current constraints or in-progress work.
+3. If a Figma MCP tool is available, look for design specs or component names related to the topic.
+4. If any other knowledge base tool is connected (Notion, Linear, GitHub issues, etc.), query it for relevant documentation.
+
+Use the results to ask questions that are specific to your organization's actual workflow, constraints, and standards — not generic questions. If no internal documentation is found, fall back to domain best practices.
 
 Examples of what to search for depending on the detected domain:
 - ONNX model → model validation process, opset standards, deployment pipeline

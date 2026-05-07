@@ -20,7 +20,7 @@ import {
 } from "./clarifier.js";
 
 const server = new Server(
-  { name: "prompt-clarifier", version: "3.0.2" },
+  { name: "prompt-clarifier", version: "3.0.4" },
   { capabilities: { tools: {} } }
 );
 
@@ -41,6 +41,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
             type: "string",
             description: "Session ID returned by a previous call (to continue the conversation).",
           },
+          question: {
+            type: "string",
+            description: "The clarifying question that was just asked to the user (pass it back so the session history stays complete).",
+          },
           answer: {
             type: "string",
             description: "The user's answer to the last clarifying question.",
@@ -60,6 +64,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const args = request.params.arguments as {
     prompt?: string;
     session_id?: string;
+    question?: string;
     answer?: string;
   };
 
@@ -100,7 +105,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   // Save the answer to session
   if (answer.trim()) {
-    session.qaHistory.push({ question: "", answer });
+    session.qaHistory.push({ question: args.question ?? "", answer });
     saveSession(session);
   }
 
@@ -137,7 +142,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write("Prompt Clarifier MCP server v3.0.1 started (stdio)\n");
+  process.stderr.write("Prompt Clarifier MCP server v3.0.4 started (stdio)\n");
 }
 
 main().catch((err) => {
