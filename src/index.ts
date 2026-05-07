@@ -20,7 +20,7 @@ import {
 } from "./clarifier.js";
 
 const server = new Server(
-  { name: "prompt-clarifier", version: "3.0.4" },
+  { name: "prompt-clarifier", version: "3.0.5" },
   { capabilities: { tools: {} } }
 );
 
@@ -86,7 +86,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             system_prompt: buildClarifySystemPrompt(args.prompt, [], domain),
             user_message: `Here is the user prompt to clarify: ${args.prompt}`,
             instructions:
-              "Ask the first clarifying question now. Include the session_id in your response so the user knows to pass it back.",
+              "Ask the first clarifying question now. When calling this tool again, pass your question text in the `question` field, the user's answer in `answer`, and the `session_id`.",
           }),
         },
       ],
@@ -103,23 +103,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   const answer = args.answer ?? "";
 
-  // Save the answer to session
+  // Go signal → generate final prompt WITHOUT saving "go" to history
+  if (isGoSignal(answer)) {
+    const enriched = buildEnrichedPrompt(session.initialPrompt, session.qaHistory);
+    deleteSession(session.id);
+    return {
+      content: [{ type: "text", text: JSON.stringify({ final_prompt: enriched }) }],
+    };
+  }
+
+  // Save the real answer to session
   if (answer.trim()) {
     session.qaHistory.push({ question: args.question ?? "", answer });
     saveSession(session);
   }
 
-  // Go signal or max questions reached → return final enriched prompt
-  if (isGoSignal(answer) || session.qaHistory.length >= 5) {
+  // Max questions reached → return final enriched prompt
+  if (session.qaHistory.length >= 5) {
     const enriched = buildEnrichedPrompt(session.initialPrompt, session.qaHistory);
     deleteSession(session.id);
     return {
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({ final_prompt: enriched }),
-        },
-      ],
+      content: [{ type: "text", text: JSON.stringify({ final_prompt: enriched }) }],
     };
   }
 
@@ -133,6 +137,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           system_prompt: buildClarifySystemPrompt(session.initialPrompt, session.qaHistory, domain),
           user_message: `The user answered: ${answer}. Ask the next question.`,
           qa_count: session.qaHistory.length,
+          instructions: "Ask the next clarifying question. When calling this tool again, pass your question text in the `question` field, the user's answer in `answer`, and the `session_id`.",
         }),
       },
     ],
@@ -142,7 +147,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  process.stderr.write("Prompt Clarifier MCP server v3.0.4 started (stdio)\n");
+  process.stderr.write("Prompt Clarifier MCP server v3.0.5 started (stdio)\n");
 }
 
 main().catch((err) => {
